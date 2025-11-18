@@ -172,7 +172,8 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
     // Calculate camera position behind the user for navigation view
     final cameraPosition = _calculateCameraPositionBehind(position, bearing);
 
-    await mapboxMap!.flyTo(
+    // Use easeTo instead of flyTo for smoother, less intensive animations
+    await mapboxMap!.easeTo(
       CameraOptions(
         center: Point(coordinates: cameraPosition),
         zoom: 17.5,
@@ -180,7 +181,7 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
         pitch: 65.0, // Increased pitch for better 3D navigation view
       ),
       MapAnimationOptions(
-        duration: 500,
+        duration: 300, // Shorter duration to reduce animation conflicts
         startDelay: 0,
       ),
     );
@@ -200,9 +201,6 @@ void _onMapScroll(MapContentGestureContext gestureContext) {
 }
   
   void _returnToTracking(MapStateProvider mapState) async {
-    mapState.setMode(MapMode.tracking);
-
-    // Immediately snap back to tracking position behind user
     if (mapState.currentPosition != null) {
       final position = Point(
         coordinates: Position(
@@ -214,20 +212,19 @@ void _onMapScroll(MapContentGestureContext gestureContext) {
       // Calculate camera position behind the user
       final cameraPosition = _calculateCameraPositionBehind(position, mapState.currentBearing);
 
-      // Use easeTo with short duration for quick return to tracking
-      await mapboxMap!.easeTo(
+      // Immediately set camera position without animation to avoid conflicts
+      await mapboxMap!.setCamera(
         CameraOptions(
           center: Point(coordinates: cameraPosition),
           zoom: 17.5,
           bearing: mapState.currentBearing,
           pitch: 65.0,
         ),
-        MapAnimationOptions(
-          duration: 800, // Quick but smooth transition
-          startDelay: 0,
-        ),
       );
     }
+
+    // Set mode to tracking AFTER positioning camera to avoid animation conflicts
+    mapState.setMode(MapMode.tracking);
   }
   
   @override
