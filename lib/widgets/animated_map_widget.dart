@@ -3,6 +3,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import '../provider/map_state_provider.dart';
 import '../animation/smooth_animation_controller.dart';
+import 'dart:math' as math;
 
 class AnimatedMapWidget extends StatefulWidget {
   const AnimatedMapWidget({Key? key}) : super(key: key);
@@ -130,13 +131,53 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
     }
   }
   
+  /// Calculate camera position behind the user for navigation-style view
+  /// This positions the camera so the user appears in the lower third of the screen
+  Position _calculateCameraPositionBehind(Point userPosition, double bearing) {
+    const double earthRadius = 6371000.0; // Earth's radius in meters
+    const double cameraDistanceBehind = 120.0; // Distance behind user in meters
+
+    final double userLat = userPosition.coordinates.lat;
+    final double userLon = userPosition.coordinates.lng;
+
+    // Convert bearing to radians and add 180 degrees (to go behind the user)
+    final double bearingRad = (bearing + 180) * math.pi / 180.0;
+
+    // Convert latitude to radians
+    final double lat1Rad = userLat * math.pi / 180.0;
+
+    // Calculate angular distance
+    final double angularDistance = cameraDistanceBehind / earthRadius;
+
+    // Calculate new latitude
+    final double lat2Rad = math.asin(
+      math.sin(lat1Rad) * math.cos(angularDistance) +
+      math.cos(lat1Rad) * math.sin(angularDistance) * math.cos(bearingRad)
+    );
+
+    // Calculate new longitude
+    final double lon2Rad = (userLon * math.pi / 180.0) + math.atan2(
+      math.sin(bearingRad) * math.sin(angularDistance) * math.cos(lat1Rad),
+      math.cos(angularDistance) - math.sin(lat1Rad) * math.sin(lat2Rad)
+    );
+
+    // Convert back to degrees
+    final double cameraLat = lat2Rad * 180.0 / math.pi;
+    final double cameraLon = lon2Rad * 180.0 / math.pi;
+
+    return Position(cameraLon, cameraLat);
+  }
+
   Future<void> _animateCameraTracking(Point position, double bearing) async {
+    // Calculate camera position behind the user for navigation view
+    final cameraPosition = _calculateCameraPositionBehind(position, bearing);
+
     await mapboxMap!.flyTo(
       CameraOptions(
-        center: position,
-        zoom: 17.0,
+        center: Point(coordinates: cameraPosition),
+        zoom: 17.5,
         bearing: bearing,
-        pitch: 60.0,
+        pitch: 65.0, // Increased pitch for better 3D navigation view
       ),
       MapAnimationOptions(
         duration: 500,
@@ -158,10 +199,10 @@ void _onMapScroll(MapContentGestureContext gestureContext) {
   // You can use screenCoord or geoPoint if needed
 }
   
-  void _returnToTracking(MapStateProvider mapState) {
+  void _returnToTracking(MapStateProvider mapState) async {
     mapState.setMode(MapMode.tracking);
-    
-    // Animate back to user position
+
+    // Immediately snap back to tracking position behind user
     if (mapState.currentPosition != null) {
       final position = Point(
         coordinates: Position(
@@ -169,7 +210,23 @@ void _onMapScroll(MapContentGestureContext gestureContext) {
           mapState.currentPosition!.latitude,
         ),
       );
-      _animateCameraTracking(position, mapState.currentBearing);
+
+      // Calculate camera position behind the user
+      final cameraPosition = _calculateCameraPositionBehind(position, mapState.currentBearing);
+
+      // Use easeTo with short duration for quick return to tracking
+      await mapboxMap!.easeTo(
+        CameraOptions(
+          center: Point(coordinates: cameraPosition),
+          zoom: 17.5,
+          bearing: mapState.currentBearing,
+          pitch: 65.0,
+        ),
+        MapAnimationOptions(
+          duration: 800, // Quick but smooth transition
+          startDelay: 0,
+        ),
+      );
     }
   }
   
