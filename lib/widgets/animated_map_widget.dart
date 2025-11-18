@@ -29,6 +29,14 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
   Widget build(BuildContext context) {
     return Consumer<MapStateProvider>(
       builder: (context, mapState, child) {
+        // Use current position if available, otherwise use a default
+        final initialPosition = mapState.currentPosition != null
+            ? Position(
+                mapState.currentPosition!.longitude,
+                mapState.currentPosition!.latitude,
+              )
+            : Position(5.0, 52.0); // Center of Netherlands as fallback
+
         return Stack(
           children: [
             MapWidget(
@@ -36,7 +44,7 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
               onMapCreated: _onMapCreated,
               onScrollListener: _onMapScroll,
               cameraOptions: CameraOptions(
-                center: Point(coordinates: Position(-122.4194, 37.7749)),
+                center: Point(coordinates: initialPosition),
                 zoom: 16.0,
                 pitch: 60.0,
               ),
@@ -65,16 +73,25 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
   
   Future<void> _setupUserMarker() async {
     circleAnnotationManager = await mapboxMap!.annotations.createCircleAnnotationManager();
-    
+
+    // Get current position from provider
+    final mapState = context.read<MapStateProvider>();
+    final currentPos = mapState.currentPosition;
+
+    // Use current position if available, otherwise use Netherlands center
+    final markerPosition = currentPos != null
+        ? Position(currentPos.longitude, currentPos.latitude)
+        : Position(5.0, 52.0);
+
     // Create user location marker
     final CircleAnnotationOptions markerOptions = CircleAnnotationOptions(
-      geometry: Point(coordinates: Position(-122.4194, 37.7749)),
+      geometry: Point(coordinates: markerPosition),
       circleColor: Colors.blue.value,
       circleRadius: 10.0,
       circleStrokeColor: Colors.white.value,
       circleStrokeWidth: 2.0,
     );
-    
+
     userMarker = await circleAnnotationManager!.create(markerOptions);
   }
   
