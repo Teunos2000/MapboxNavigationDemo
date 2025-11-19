@@ -12,7 +12,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Set the access token after binding is initialized
-  const String mapboxAccessToken = 'pk.eyJ1Ijoicm95eGV3IiwiYSI6ImNtaTI2bnNuOTA4ejAyanFyc2RoYjNwaHAifQ.sYfK2yxm9vyAMmN_R6C5QA';
+  const String mapboxAccessToken = '';
   MapboxOptions.setAccessToken(mapboxAccessToken);
   
   runApp(const MyApp());
