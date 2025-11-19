@@ -137,8 +137,8 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
     const double earthRadius = 6371000.0; // Earth's radius in meters
     const double cameraDistanceBehind = 120.0; // Distance behind user in meters
 
-    final double userLat = userPosition.coordinates.lat;
-    final double userLon = userPosition.coordinates.lng;
+    final double userLat = userPosition.coordinates.lat.toDouble();
+    final double userLon = userPosition.coordinates.lng.toDouble();
 
     // Convert bearing to radians and add 180 degrees (to go behind the user)
     final double bearingRad = (bearing + 180) * math.pi / 180.0;
