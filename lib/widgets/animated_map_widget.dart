@@ -3,6 +3,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import '../provider/map_state_provider.dart';
 import '../animation/smooth_animation_controller.dart';
+import 'dart:math' as math;
 
 class AnimatedMapWidget extends StatefulWidget {
   const AnimatedMapWidget({Key? key}) : super(key: key);
@@ -29,6 +30,14 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
   Widget build(BuildContext context) {
     return Consumer<MapStateProvider>(
       builder: (context, mapState, child) {
+        // Use current position if available, otherwise use a default
+        final initialPosition = mapState.currentPosition != null
+            ? Position(
+                mapState.currentPosition!.longitude,
+                mapState.currentPosition!.latitude,
+              )
+            : Position(5.0, 52.0); // Center of Netherlands as fallback
+
         return Stack(
           children: [
             MapWidget(
@@ -36,7 +45,7 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
               onMapCreated: _onMapCreated,
               onScrollListener: _onMapScroll,
               cameraOptions: CameraOptions(
-                center: Point(coordinates: Position(-122.4194, 37.7749)),
+                center: Point(coordinates: initialPosition),
                 zoom: 16.0,
                 pitch: 60.0,
               ),
@@ -65,16 +74,25 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
   
   Future<void> _setupUserMarker() async {
     circleAnnotationManager = await mapboxMap!.annotations.createCircleAnnotationManager();
-    
+
+    // Get current position from provider
+    final mapState = context.read<MapStateProvider>();
+    final currentPos = mapState.currentPosition;
+
+    // Use current position if available, otherwise use Netherlands center
+    final markerPosition = currentPos != null
+        ? Position(currentPos.longitude, currentPos.latitude)
+        : Position(5.0, 52.0);
+
     // Create user location marker
     final CircleAnnotationOptions markerOptions = CircleAnnotationOptions(
-      geometry: Point(coordinates: Position(-122.4194, 37.7749)),
+      geometry: Point(coordinates: markerPosition),
       circleColor: Colors.blue.value,
       circleRadius: 10.0,
       circleStrokeColor: Colors.white.value,
       circleStrokeWidth: 2.0,
     );
-    
+
     userMarker = await circleAnnotationManager!.create(markerOptions);
   }
   
@@ -113,16 +131,57 @@ class _AnimatedMapWidgetState extends State<AnimatedMapWidget>
     }
   }
   
+  /// Calculate camera position behind the user for navigation-style view
+  /// This positions the camera so the user appears in the lower third of the screen
+  Position _calculateCameraPositionBehind(Point userPosition, double bearing) {
+    const double earthRadius = 6371000.0; // Earth's radius in meters
+    const double cameraDistanceBehind = 120.0; // Distance behind user in meters
+
+    final double userLat = userPosition.coordinates.lat.toDouble();
+    final double userLon = userPosition.coordinates.lng.toDouble();
+
+    // Convert bearing to radians and add 180 degrees (to go behind the user)
+    final double bearingRad = (bearing + 180) * math.pi / 180.0;
+
+    // Convert latitude to radians
+    final double lat1Rad = userLat * math.pi / 180.0;
+
+    // Calculate angular distance
+    final double angularDistance = cameraDistanceBehind / earthRadius;
+
+    // Calculate new latitude
+    final double lat2Rad = math.asin(
+      math.sin(lat1Rad) * math.cos(angularDistance) +
+      math.cos(lat1Rad) * math.sin(angularDistance) * math.cos(bearingRad)
+    );
+
+    // Calculate new longitude
+    final double lon2Rad = (userLon * math.pi / 180.0) + math.atan2(
+      math.sin(bearingRad) * math.sin(angularDistance) * math.cos(lat1Rad),
+      math.cos(angularDistance) - math.sin(lat1Rad) * math.sin(lat2Rad)
+    );
+
+    // Convert back to degrees
+    final double cameraLat = lat2Rad * 180.0 / math.pi;
+    final double cameraLon = lon2Rad * 180.0 / math.pi;
+
+    return Position(cameraLon, cameraLat);
+  }
+
   Future<void> _animateCameraTracking(Point position, double bearing) async {
-    await mapboxMap!.flyTo(
+    // Calculate camera position behind the user for navigation view
+    final cameraPosition = _calculateCameraPositionBehind(position, bearing);
+
+    // Use easeTo instead of flyTo for smoother, less intensive animations
+    await mapboxMap!.easeTo(
       CameraOptions(
-        center: position,
-        zoom: 17.0,
+        center: Point(coordinates: cameraPosition),
+        zoom: 17.5,
         bearing: bearing,
-        pitch: 60.0,
+        pitch: 65.0, // Increased pitch for better 3D navigation view
       ),
       MapAnimationOptions(
-        duration: 500,
+        duration: 300, // Shorter duration to reduce animation conflicts
         startDelay: 0,
       ),
     );
@@ -141,10 +200,7 @@ void _onMapScroll(MapContentGestureContext gestureContext) {
   // You can use screenCoord or geoPoint if needed
 }
   
-  void _returnToTracking(MapStateProvider mapState) {
-    mapState.setMode(MapMode.tracking);
-    
-    // Animate back to user position
+  void _returnToTracking(MapStateProvider mapState) async {
     if (mapState.currentPosition != null) {
       final position = Point(
         coordinates: Position(
@@ -152,8 +208,23 @@ void _onMapScroll(MapContentGestureContext gestureContext) {
           mapState.currentPosition!.latitude,
         ),
       );
-      _animateCameraTracking(position, mapState.currentBearing);
+
+      // Calculate camera position behind the user
+      final cameraPosition = _calculateCameraPositionBehind(position, mapState.currentBearing);
+
+      // Immediately set camera position without animation to avoid conflicts
+      await mapboxMap!.setCamera(
+        CameraOptions(
+          center: Point(coordinates: cameraPosition),
+          zoom: 17.5,
+          bearing: mapState.currentBearing,
+          pitch: 65.0,
+        ),
+      );
     }
+
+    // Set mode to tracking AFTER positioning camera to avoid animation conflicts
+    mapState.setMode(MapMode.tracking);
   }
   
   @override

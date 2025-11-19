@@ -6,7 +6,22 @@ class LocationService {
   StreamSubscription<Position>? _positionSubscription;
   
   Stream<Position> get locationStream => _locationController.stream;
-  
+
+  // Get current position immediately
+  Future<Position?> getCurrentPosition() async {
+    final hasPermission = await _handlePermissions();
+    if (!hasPermission) return null;
+
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 10),
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
   // Throttled GPS updates for battery efficiency
   Future<void> startLocationTracking() async {
     final hasPermission = await _handlePermissions();

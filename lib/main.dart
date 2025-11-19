@@ -12,7 +12,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Set the access token after binding is initialized
-  const String mapboxAccessToken = 'pk.eyJ1Ijoicm95eGV3IiwiYSI6ImNtaTI2bnNuOTA4ejAyanFyc2RoYjNwaHAifQ.sYfK2yxm9vyAMmN_R6C5QA';
+  const String mapboxAccessToken = '';
   MapboxOptions.setAccessToken(mapboxAccessToken);
   
   runApp(const MyApp());
@@ -46,6 +46,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final LocationService _locationService = LocationService();
   StreamSubscription<CompassEvent>? _compassSubscription;
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -55,15 +56,26 @@ class _MapScreenState extends State<MapScreen> {
 
   void _initializeServices() async {
     final mapState = context.read<MapStateProvider>();
-    
+
+    // Get initial position first
+    final initialPosition = await _locationService.getCurrentPosition();
+    if (initialPosition != null) {
+      mapState.updatePosition(initialPosition);
+    }
+
+    // Mark as initialized
+    setState(() {
+      _isInitialized = true;
+    });
+
     // Start location tracking
     await _locationService.startLocationTracking();
-    
+
     // Listen to location updates
     _locationService.locationStream.listen((position) {
       mapState.updatePosition(position);
     });
-    
+
     // Listen to compass for bearing
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (event.heading != null) {
@@ -75,7 +87,18 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AnimatedMapWidget(),
+      body: _isInitialized
+          ? AnimatedMapWidget()
+          : Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Getting your location...'),
+                ],
+              ),
+            ),
     );
   }
 
